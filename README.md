@@ -141,7 +141,7 @@ comes back.
 Telemetry is currently simulated pending hardware integration. The pipeline is
 real: data flows into Grafana, and the agent queries and reasons over it live.
 
-Developed in consultation with a working Philippine teleserye director.
+Developed in consultation with an award-winning Philippine teleserye director — a film graduate of Los Angeles City College whose debut feature became one of the most decorated films in Philippine cinema history, winning Best Picture and Best Director honors from both the Star Awards and FAMAS. The workflow described here comes from his daily experience directing across multiple location shoots.
 
 ## License
 
