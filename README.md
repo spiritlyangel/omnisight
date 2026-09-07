@@ -1,148 +1,165 @@
 # Omnisight
 
-**An AI monitoring agent for live television production.** It watches a wireless
-camera fleet in real time and tells the director what to do about it — in plain
-language, before something breaks.
+**Know which camera is about to fail — before it does.**
 
-Built for the [Agentic Cinema: The Blockbuster Hackathon](https://devpost.com/)
-— Grafana Labs partner track.
+A monitoring agent for live television production. Omnisight watches wireless
+camera telemetry across a shoot and tells the director what is about to break,
+in the language they actually work in.
+
+- **Live dashboard:** https://omnisighttelemetry.grafana.net/public-dashboards/38c7596404964e1bbf2b68602f88ea0d
+- **Partner track:** Grafana Labs
 
 ---
 
 ## The problem
 
-On a Philippine teleserye set, a director may shoot across two or three
-locations in a single day, with cameras transmitting wirelessly back to a base
-station. When a camera's signal degrades, the director loses their monitor feed
-and shoots blind — or loses the take entirely.
+A teleserye unit shoots two or three locations a day. The cameras are wireless,
+transmitting to a base station so the director can watch the shot on a monitor
+while it happens.
 
-Today they find out when the picture disappears.
+When a link degrades, the director finds out the way everyone else does: the
+monitor goes black. Mid-take. The picture was fine and then it wasn't, and now
+they are directing a scene they cannot see.
 
-## What Omnisight does
+Everything needed to predict that failure was already in the telemetry ten
+minutes earlier. Nobody was reading it, because reading it is not a job anyone
+on a set has time to do.
 
-Omnisight ingests live camera telemetry — signal strength, battery, temperature,
-latency, dropped frames — and layers a Gemini-powered agent on top of Grafana's
-observability stack to answer the questions a director actually has:
+The problem addressed here was identified by a working Philippine teleserye
+director — an award-winning filmmaker whose debut feature won Best Picture and
+Best Director honors from both the Star Awards and FAMAS. He described the three
+phases of a shoot day where camera reliability decides whether a take survives,
+and named the failure that costs the most: losing the monitor feed mid-take,
+with no warning. The workflow modelled here follows his account of directing
+across multiple location shoots.
 
-**Before the shoot**
-- Will the signal hold at this location?
-- Where are the likely dead zones?
-- How many spare batteries do we need for this block?
+## What it does
 
-**During the shoot**
-- Which camera is about to drop, and how long do I have?
-- Is any camera recording but not transmitting?
-- Do I need to pause the take, or can we push through?
+Omnisight answers three questions, before, during and after the shoot.
 
-**After the shoot**
-- Where and when did we lose signal today?
-- What should change at this location next time?
+**What is my fleet status?** A plain read of every camera, leading with whatever
+needs attention. If nothing does, it says so in one line and stops.
 
-## Why an agent, not a dashboard
+**What is going to fail next?** The predictive question. It reasons from trend
+rather than current value — a camera at -76 dBm and falling matters more than
+one sitting steady at -79 dBm.
 
-A dashboard reports that Camera 3 is at -81 dBm and 26% battery.
+**How long do I actually have?** Battery percentage is close to meaningless on a
+set. Omnisight converts it to minutes using the pack's measured drain rate, and
+flags packs that are fading faster than the fleet.
 
-Omnisight says:
+### Why an agent rather than a dashboard
 
-> *"Cam 3 will lose feed in about 10 minutes — move the relay or reposition.
-> Its pack is draining at double rate, so treat 26% as 15 minutes, not 40."*
+A dashboard shows five wobbly lines and leaves the reading to you. A director
+does not have time to read, and should not need to learn what dBm means.
 
-The translation is the product. A director mid-take cannot read graphs; they can
-act on one sentence.
+The product is the translation:
 
-### Validated lead time
+> Not: *"CAM-03 is at -81 dBm with a trend of -0.4 dBm/min and 26% battery."*
+>
+> But: *"Cam 3 is about ten minutes from losing your feed. Its pack is draining
+> at double the normal rate, so treat that 26% as fifteen minutes, not forty."*
 
-Against a simulated shoot day, Omnisight's predictive signal rule flagged a
-failing camera **31 minutes before** the feed was lost — enough time to move a
-relay, reposition an operator, or reorder the shot list.
-
-```
-CAM-03   Warning fires: min 134   Feed lost: min 165   Lead time: 31 min
-```
-
-The battery rule shows the same gap between a number and its meaning. Late in a
-degraded pack's life, 26% remaining is roughly 37 minutes — while earlier in the
-same block, 72% was 174 minutes. Percentages mislead; Omnisight reports time.
-
----
+Knowing when to stay quiet matters just as much. When the whole fleet drops off
+at once, the unit is in a van between locations — that is a convoy, not five
+failures. A tool that cries wolf during a planned transit gets switched off by
+lunch, so the suppression rules are as carefully specified as the alerts.
 
 ## Architecture
 
-```
-Camera telemetry  ──▶  Grafana (time-series + alerting)  ──▶  Gemini agent  ──▶  Director
-   (simulated)          thresholds, dwell times,              translation,
-                        suppression rules                     recommendation
-```
-
-| Layer | Technology |
+| Layer | What it does |
 |---|---|
-| Agent orchestration | Gemini Enterprise Agent Platform (Google Cloud) |
-| Observability, alerting | Grafana Labs |
-| Telemetry source | Simulated fleet (see `data/`) |
+| Telemetry | Per-camera samples at 30s intervals: signal, battery, temperature, link state, bitrate, dropped frames, latency, local-recording flag |
+| **Grafana Cloud** | Stores and visualises the fleet; public dashboard; queried live by the agent over the HTTP API |
+| Cloud Function | Calls Grafana's `/api/ds/query`, computes derived rates — signal trend, drain rate, minutes remaining, pack-swap detection |
+| MCP server | Exposes that function as a Model Context Protocol tool |
+| **Gemini agent** | Calls the tool and translates telemetry into director language |
 
-## Repository layout
+The Grafana integration is live, not decorative: the agent does not read the
+data file directly. Every answer it gives comes from a runtime query against the
+Grafana Cloud API.
+
+## Repository
 
 ```
-data/generate_telemetry.py   Mock telemetry generator for a full shoot day
-docs/alert-rules.md          Alert thresholds, dwell times, suppression logic
+agent/
+  agent.py            ADK agent definition — model, instructions, MCP toolset
+  system_prompt.md    The translation logic: thresholds, suppression, severity
+  grafana_tool.py     Queries Grafana Cloud; computes derived rates
+  mcp_server.py       MCP wrapper (JSON-RPC over HTTP)
+data/
+  generate_telemetry.py   Shoot-day telemetry generator
+docs/
+  alert-rules.md      Full alert specification and suppression rules
+shoot_day.json        Generated sample day, 6,200 rows
 ```
 
-## Running the telemetry generator
+## Running it
 
-Requires Python 3 only — no dependencies.
+Generate a shoot day:
 
 ```bash
-cd data
-python3 generate_telemetry.py
+python3 data/generate_telemetry.py --call-time 07:00
 ```
 
-Writes `shoot_day.csv` and `shoot_day.json`: 6,200 rows across 5 cameras at
-30-second intervals.
-
-Options:
+Deploy the tool and MCP endpoints:
 
 ```bash
-python3 generate_telemetry.py --seed 7        # different variation
-python3 generate_telemetry.py --interval 15   # sample every 15 seconds
-python3 generate_telemetry.py --call-time 09:00
+gcloud functions deploy omnisight-mcp \
+  --gen2 --runtime=python311 --region=asia-southeast1 \
+  --source=agent --entry-point=mcp \
+  --trigger-http --allow-unauthenticated \
+  --set-env-vars GRAFANA_URL=...,GRAFANA_DS_UID=...,GRAFANA_TOKEN=...
 ```
 
-### What the simulated day contains
+Then attach the MCP endpoint to the agent and give it `system_prompt.md` as its
+instructions.
 
-Four setups: interior ancestral house → convoy transit → public market →
-night rooftop. Five cameras with different operators, distances from base, and
-battery health.
+## The simulated shoot day
 
-Failure scenarios are deliberately engineered into the data so the agent's
-behaviour can be tested against known events:
+`shoot_day.json` covers 07:00 to 17:19 across four setups — an ancestral house
+interior, a convoy, a public market exterior, and a night rooftop — with five
+cameras and named operators.
 
-| When | What | Tests |
-|---|---|---|
-| min 120–165 | CAM-03 signal decays, then drops | Predictive warning lead time |
-| min 200–260 | Convoy transit, all cameras offline | That the agent does **not** false-alarm |
-| min 300–340 | CAM-05 hit by 4G congestion at the market | Oscillating vs. steady degradation |
-| min 380–420 | CAM-02 overheats while signal stays fine | Watching more than one metric |
-| min 520–620 | CAM-03's degraded pack collapses early | Time-remaining vs. percentage |
-| min 545–560 | CAM-04 brief rooftop blip, self-recovers | Transient vs. real failure |
+Seven incidents are engineered into it, each testing a different judgement:
 
-## Alert rules
+| Time | Camera | Event | What it tests |
+|---|---|---|---|
+| 120–165 | CAM-03 | Signal decay | Predictive lead time |
+| 165–180 | CAM-03 | Feed lost | The failure that should have been prevented |
+| 200–260 | All | Convoy, offline by design | That the agent does **not** false-alarm |
+| 300–340 | CAM-05 | 4G congestion, oscillating | Intermittent vs clean decay |
+| 380–420 | CAM-02 | Thermal rise, signal fine | Watching more than one metric |
+| 520–620 | CAM-03 | Battery collapse | Minutes remaining vs percentage |
+| 545–560 | CAM-04 | Brief blip, self-recovers | Transient vs real failure |
 
-See [`docs/alert-rules.md`](docs/alert-rules.md) for the full specification.
+Two numbers from that day are worth stating plainly:
 
-The most important rule is the suppression logic that runs first: no alert fires
-during a planned convoy, a setup change, or camera warm-up. A monitoring tool
-that cries wolf during a scheduled move gets switched off by lunch and never
-comes back.
+**31 minutes of lead time.** The warning threshold on CAM-03 is crossed at
+minute 134. The feed is lost at minute 165. Half an hour is enough to move a
+relay, reposition, or reorder the shot list.
 
----
+**The battery deception.** At minute 535 CAM-03 reads 72% — about 174 minutes.
+At minute 615 it reads 26% — about 37 minutes. The same scale, but a percentage
+point late in a fading pack's life is worth a fraction of one early on.
 
-## Status
+## Assumptions and limitations
 
-Telemetry is currently simulated pending hardware integration. The pipeline is
-real: data flows into Grafana, and the agent queries and reasons over it live.
+**The telemetry is simulated.** The pipeline is real — data genuinely flows into
+Grafana Cloud, and the agent genuinely queries it at runtime — but the samples
+are generated rather than captured from hardware. Integrating a real transmitter
+fleet is the obvious next step and changes nothing above the ingest layer.
 
-Developed in consultation with an award-winning Philippine teleserye director — a film graduate of Los Angeles City College whose debut feature became one of the most decorated films in Philippine cinema history, winning Best Picture and Best Director honors from both the Star Awards and FAMAS. The workflow described here comes from his daily experience directing across multiple location shoots.
+**Local recording is modelled, not confirmed.** Omnisight treats a dropout on a
+locally-recording camera as a lost monitor feed with the take intact, and a
+dropout without local recording as a lost take. This single fact drives severity
+across half the alert rules. It reflects standard practice but has not yet been
+confirmed against this unit's actual workflow — that verification is pending.
+
+**Thresholds are a starting point.** The dBm bands and drain-rate multipliers in
+`docs/alert-rules.md` are reasoned defaults. Real deployment would tune them per
+location and per transmitter model.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
