@@ -6,6 +6,7 @@ A monitoring agent for live television production. Omnisight reads wireless
 camera telemetry and answers a director's questions in a director's language —
 before the shoot, during it, and after.
 
+- **Try it:** https://omnisight-web-708110251968.asia-southeast1.run.app
 - **Live dashboard:** https://omnisighttelemetry.grafana.net/public-dashboards/38c7596404964e1bbf2b68602f88ea0d
 - **Partner track:** Grafana Labs
 
@@ -42,29 +43,37 @@ of directing across multiple location shoots.
 
 ## What it does
 
-**Before the shoot — will this location hold?**
+### Before the shoot — will this location hold?
 
-> *"We're shooting at an ancestral house interior tomorrow, cameras up to 70
-> metres from the base station. What should I expect?"*
+Paste tomorrow's call sheet into the chat page and ask. Omnisight reads the
+locations, distances, camera assignments and pack conditions from it, then
+checks them against what the fleet actually recorded in comparable conditions.
+
+From a real exchange, for a location that appears nowhere in the telemetry:
+
+> **You will likely lose your monitor feeds on Cam 3 (Kiko) and Cam 5 (Jorge).**
+> Today in the Ancestral House, the stone walls completely froze Kiko's monitor
+> and turned Jorge's feed into a stuttering mess. Tomorrow they are pushed even
+> further out — 70m and 90m into the far wing. Because they record locally your
+> takes are safe, but expect to shoot blind on those two monitors.
 >
-> Based on the previous session at this location: Jorge's camera hit critical
-> signal levels with latency over 450 ms and bitrate down to 6 Mbps; Kiko's link
-> degraded with frame drops. Don't rely on a single base station 70 metres out —
-> deploy a relay or move it to a central hallway. All cameras record locally, so
-> if a monitor drops you keep rolling; the take is safe on the cards. And swap
-> Kiko's pack before the block: it's fading at 1.5× the fleet rate.
+> **Kiko's battery will not survive the block.** The call sheet lists his pack as
+> "aging," and our telemetry confirms it: today it drained at double the rate of
+> the rest of the fleet. It will die about three hours into this four-and-a-half
+> hour block. Swap it before the first setup, or schedule a hard swap no later
+> than 09:30.
 
-Grounded in what the fleet actually recorded in comparable conditions, not
-generic advice.
+Nobody wrote that reasoning. It is the call sheet, the telemetry, and the
+system prompt.
 
-**During the shoot — what is about to fail?**
+### During the shoot — what is about to fail?
 
 Omnisight reasons from trend rather than current value. A camera at -76 dBm and
 falling matters more than one sitting steady at -79. It reports battery in
 minutes, not percent, using each pack's measured drain rate — and flags packs
 fading faster than the fleet.
 
-**After the shoot — what should change tomorrow?**
+### After the shoot — what should change tomorrow?
 
 Where and when signal was lost, whether footage was at risk, which packs
 underperformed.
@@ -87,15 +96,40 @@ at once, the unit is in a van between locations — that is a convoy, not five
 failures. A tool that cries wolf during a planned transit gets switched off by
 lunch, so the suppression rules are as carefully specified as the alerts.
 
+## The call sheet is the configuration
+
+Omnisight does not ask a director to configure anything.
+
+Wireless video transmitters already report their own health — signal strength,
+battery, temperature, bitrate — to the receiver. That is how a base station
+knows which transmitter it is paired with. What the hardware cannot supply is
+meaning: the receiver knows a device is at -74 dBm, not that it is Kiko's
+camera, in the far bedroom, on a pack the camera department flagged twice last
+week.
+
+The call sheet supplies exactly that missing layer. Every production already
+distributes one the night before — roster, operators, locations, INT/EXT,
+schedule, pack condition — and somebody is already responsible for its accuracy.
+
+So the only manual step is a one-time pairing: on the first day, whoever runs
+video village maps each transmitter to a camera slot. Five minutes, once. After
+that the system reads the call sheet each morning and everything else follows.
+
+In this repository the call sheet drives the telemetry generator
+(`data/call_sheet.txt` → `data/call_sheet.py`), and the chat page accepts a
+pasted or uploaded sheet at runtime for pre-shoot questions.
+
 ## Architecture
 
 | Layer | What it does |
 |---|---|
+| Call sheet | Roster, operators, locations, setups, schedule, pack condition — the production's own document |
 | Telemetry | Per-camera samples at 30s intervals: signal, battery, temperature, link state, bitrate, dropped frames, latency, local-recording flag |
 | **Grafana Cloud** | Stores and visualises the fleet; public dashboard; queried live by both MCP servers below |
-| **`grafana/mcp-grafana`** | The official Grafana MCP server, deployed to Cloud Run over streamable-HTTP. Gives the agent first-class access to dashboards and datasources, read-only |
+| **`grafana/mcp-grafana`** | The official Grafana MCP server, deployed to Cloud Run over streamable-HTTP, read-only |
 | Omnisight MCP server | A Cloud Function wrapped in MCP. Queries Grafana's `/api/ds/query` and computes what raw readings cannot express: signal trend, battery drain rate, minutes remaining, pack-swap detection |
 | **Gemini agent** | Built in Agent Studio on the Gemini Enterprise Agent Platform. Calls both toolsets and translates telemetry into director language |
+| Chat page | Cloud Run service running the same ADK agent, open to anyone, with a call sheet panel |
 
 Two MCP servers, deliberately. The official `grafana/mcp-grafana` server is the
 runtime connection to the Grafana stack. Omnisight's own server sits alongside
@@ -115,7 +149,13 @@ agent/
   grafana_tool.py     Queries Grafana Cloud; computes derived rates
   mcp_server.py       MCP wrapper (JSON-RPC over HTTP)
 data/
+  call_sheet.txt      The production's call sheet — the fleet configuration
+  call_sheet.py       Call sheet parser
   generate_telemetry.py   Shoot-day telemetry generator
+web/
+  index.html          The chat page
+  main.py             Flask service running the agent
+  agent_def.py        Agent definition for the web service
 docs/
   alert-rules.md      Full alert specification and suppression rules
 shoot_day.json        Generated sample day, 6,200 rows
@@ -123,10 +163,11 @@ shoot_day.json        Generated sample day, 6,200 rows
 
 ## Running it
 
-Generate a shoot day:
+Generate a shoot day from a call sheet:
 
 ```bash
-python3 data/generate_telemetry.py --call-time 07:00
+python3 data/generate_telemetry.py                        # reads call_sheet.txt
+python3 data/generate_telemetry.py --call-sheet other.txt
 ```
 
 Deploy the official Grafana MCP server:
@@ -149,14 +190,21 @@ gcloud functions deploy omnisight-mcp \
   --set-env-vars GRAFANA_URL=...,GRAFANA_DS_UID=...,GRAFANA_TOKEN=...
 ```
 
-Then attach both endpoints to the agent as MCP servers and give it
-`system_prompt.md` as its instructions.
+Deploy the chat page:
+
+```bash
+gcloud run deploy omnisight-web \
+  --source=web --region=asia-southeast1 \
+  --allow-unauthenticated --memory=1Gi --timeout=300 \
+  --set-env-vars GOOGLE_GENAI_USE_VERTEXAI=1,GOOGLE_CLOUD_PROJECT=...,GOOGLE_CLOUD_LOCATION=global
+```
 
 ## The simulated shoot day
 
-`shoot_day.json` covers 07:00 to 17:19 across four setups — an ancestral house
+`data/call_sheet.txt` describes a day across four setups — an ancestral house
 interior, a convoy, a public market exterior, and a night rooftop — with five
-cameras and named operators.
+cameras and named operators. The generator turns it into 6,200 rows spanning
+07:00 to 17:19.
 
 Seven incidents are engineered into it, each testing a different judgement:
 
@@ -193,12 +241,16 @@ dropout without local recording as a lost take. This single fact drives severity
 across half the alert rules. It reflects standard practice but has not yet been
 confirmed against this unit's actual workflow.
 
+**Call sheets are parsed from structured text.** Real call sheets arrive as PDFs
+and images in a hundred different house formats. The parser here reads a
+structured plain-text sheet. Extraction from a real PDF is a solved problem and
+an obvious next step, but it is not solved here.
+
 **Pre-shoot assessment reasons from history, not survey.** Location advice comes
 from what comparable setups actually recorded. It does not incorporate floor
-plans, RF site surveys, or terrain data — all of which would sharpen it
-considerably. The agent will sometimes reach for general knowledge about
-building materials to explain a pattern; the numbers it cites come from
-telemetry, the masonry does not.
+plans, RF site surveys, or terrain data. The agent will sometimes reach for
+general knowledge about building materials to explain a pattern; the numbers it
+cites come from telemetry, the masonry does not.
 
 **Thresholds are a starting point.** The dBm bands and drain-rate multipliers in
 `docs/alert-rules.md` are reasoned defaults. Real deployment would tune them per
@@ -206,17 +258,17 @@ location and per transmitter model.
 
 ## What's next
 
+**Read the call sheet as it arrives.** Today it has to be structured text. It
+should accept the PDF the 2nd AD already emailed.
+
 **Per-location memory.** A unit shoots the same locations repeatedly. Omnisight
 should remember that the second-floor bedroom always costs 8 dBm, and say so
 before the crew walks in.
 
-**Sharper pre-shoot input.** Floor plans, an RF site survey, terrain data for
-provincial shoots — enough to turn "expect dropouts at 70 metres" into "put the
-relay in the second doorway."
-
-**Push, not pull.** Right now the director asks. The valuable version speaks
-first, through whatever is already on set — an earpiece, the AD's phone, a strip
-along the monitor.
+**Speak first, quietly.** Right now the director asks. The valuable version
+warns without being asked — but a director mid-take does not want to be talked
+to. The right form is glanceable, not spoken: a strip along the edge of the
+monitor turning amber, information they can take or ignore.
 
 **Real hardware.** Live transmitter telemetry in place of the generator.
 
