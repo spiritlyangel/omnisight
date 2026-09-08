@@ -261,6 +261,14 @@ location and per transmitter model.
 **Read the call sheet as it arrives.** Today it has to be structured text. It
 should accept the PDF the 2nd AD already emailed.
 
+**Be there at the ocular.** The call sheet arrives the night before, when the
+location is already locked and all that's left is mitigation. The moment that
+actually matters is weeks earlier, at the recce — when a location manager walks
+a space with a phone and the decision is still open. That's when moving the base
+station is free, when a relay can go into the budget, when a room can be ruled
+out. Omnisight should be in that walk: stand here, point at the far wing, and
+get told this won't hold at 70 metres.
+
 **Per-location memory.** A unit shoots the same locations repeatedly. Omnisight
 should remember that the second-floor bedroom always costs 8 dBm, and say so
 before the crew walks in.
