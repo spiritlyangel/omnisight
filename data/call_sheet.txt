@@ -1,0 +1,48 @@
+===============================================================================
+                            DAILY CALL SHEET
+===============================================================================
+PRODUCTION: Mga Anino ng Kahapon          EPISODE: 118-119
+SHOOT DAY:  42                            DATE: Tuesday, 01 September 2026
+DIRECTOR:   (withheld)                    UNIT: Unit 1
+GENERAL CALL: 07:00                       EST. WRAP: 17:20
+BASE / VIDEO VILLAGE: mobile, repositioned per setup
+===============================================================================
+
+-------------------------------------------------------------------------------
+SETUPS
+-------------------------------------------------------------------------------
+07:00-10:20  INT.  Location A - Ancestral House, Malolos, Bulacan
+             Thick adobe walls. Scenes 44-51. Cam 3 stationed in the far
+             bedroom for the confrontation sequence.
+             RF: heavy attenuation expected
+
+10:20-11:20  TRANSIT  Convoy to Location B
+             Cameras struck and packed. No transmission.
+
+11:20-14:40  EXT.  Location B - Public Market, Malolos
+             Scenes 52-58. Working market, crowd control by 2nd AD.
+             RF: heavy mobile congestion expected
+
+14:40-17:20  EXT.  Location C - Rooftop, Malolos (NIGHT)
+             Scenes 59-63. Clear sightlines but base station sits at
+             street level.
+             RF: clear, distance is the constraint
+
+-------------------------------------------------------------------------------
+CAMERA DEPARTMENT
+-------------------------------------------------------------------------------
+CAM-01 | Sony FX6   | Ariel Bautista    | POSITION: A-cam, 18m from base  | PACK: good
+CAM-02 | Sony FX6   | Marlon Diaz       | POSITION: B-cam, 32m from base  | PACK: good
+CAM-03 | Sony FX3   | Kiko Salvador     | POSITION: roaming, 68m from base | PACK: aging
+CAM-04 | Sony FX3   | Dennis Ramos      | POSITION: handheld, 45m from base | PACK: fair
+CAM-05 | Blackmagic | Jorge Villanueva  | POSITION: wide/crane, 95m from base | PACK: fair
+
+NOTE FROM CAMERA DEPT: CAM-03's pack is due for replacement. Flagged twice
+last week. Swap early if the block runs long.
+
+-------------------------------------------------------------------------------
+NOTES
+-------------------------------------------------------------------------------
+All cameras record locally to card in addition to transmitting.
+Wireless video to base station; monitor feed for director at video village.
+===============================================================================
