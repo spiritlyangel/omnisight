@@ -269,6 +269,14 @@ station is free, when a relay can go into the budget, when a room can be ruled
 out. Omnisight should be in that walk: stand here, point at the far wing, and
 get told this won't hold at 70 metres.
 
+**Reconcile the call sheet's date against the telemetry's.** A call sheet is
+authoritative about what day it is on a set, and the agent treats it that way —
+correctly. But it doesn't yet check whether the sheet it's holding describes the
+day the telemetry covers. Handed a future sheet alongside today's readings, it
+concludes the feed has gone stale rather than recognising it is looking at
+tomorrow's plan and today's history. The reasoning is right; it just needs both
+dates in front of it.
+
 **Per-location memory.** A unit shoots the same locations repeatedly. Omnisight
 should remember that the second-floor bedroom always costs 8 dBm, and say so
 before the crew walks in.
