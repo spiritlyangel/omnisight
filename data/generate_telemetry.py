@@ -6,10 +6,15 @@ Simulates a fleet of wireless cameras transmitting to a base station across
 multiple location setups in a single shooting day. Emits one row per camera
 per sampling interval.
 
+The fleet roster and the day's setups are NOT hardcoded here. They are read
+from the production's call sheet - the document every unit already distributes
+the night before. See call_sheet.py.
+
 Stdlib only - no dependencies. Run:
-    python3 generate_telemetry.py                  # writes shoot_day.csv + .json
-    python3 generate_telemetry.py --seed 7         # reproducible variation
-    python3 generate_telemetry.py --interval 15    # sample every 15 seconds
+    python3 generate_telemetry.py                      # reads call_sheet.txt
+    python3 generate_telemetry.py --call-sheet other.txt
+    python3 generate_telemetry.py --seed 7             # reproducible variation
+    python3 generate_telemetry.py --interval 15        # sample every 15 seconds
 
 Designed so the data contains realistic, *engineered* failure moments the
 agent can be shown catching. See SCENARIO_NOTES at the bottom of the file.
@@ -19,54 +24,16 @@ import argparse
 import csv
 import json
 import math
+import os
 import random
-from dataclasses import dataclass, asdict
 from datetime import datetime, timedelta
 
-# --------------------------------------------------------------------------
-# Shoot day structure
-# --------------------------------------------------------------------------
+from call_sheet import parse_call_sheet, summarize
 
-@dataclass
-class Setup:
-    """One location setup within the shoot day."""
-    name: str
-    start_min: int          # minutes from call time
-    end_min: int
-    environment: str        # 'interior', 'exterior', 'interior_dense'
-    interference: float     # baseline RF noise, 0.0-1.0
-    notes: str
-
-
-SETUPS = [
-    Setup("Location A - Ancestral House (Interior)", 0, 200, "interior",
-          0.25, "Thick walls, camera 3 stationed in far bedroom"),
-    Setup("TRANSIT - Convoy to Location B", 200, 260, "transit",
-          0.90, "Cameras powered down / packed"),
-    Setup("Location B - Public Market (Exterior)", 260, 460, "exterior",
-          0.55, "Crowded, heavy 4G congestion, long sightlines"),
-    Setup("Location C - Rooftop (Exterior, Night)", 460, 620, "exterior",
-          0.20, "Clear line of sight, but far from base station"),
-]
-
-
-@dataclass
-class Camera:
-    cam_id: str
-    model: str
-    operator: str
-    battery_health: float      # 0.0-1.0, degraded batteries drain faster
-    base_distance_m: float     # nominal distance from base station
-    notes: str
-
-
-CAMERAS = [
-    Camera("CAM-01", "Sony FX6",   "Ariel",  0.95,  18.0, "A-cam, mostly near base"),
-    Camera("CAM-02", "Sony FX6",   "Marlon", 0.92,  32.0, "B-cam"),
-    Camera("CAM-03", "Sony FX3",   "Kiko",   0.61,  68.0, "Roaming; aging battery pack"),
-    Camera("CAM-04", "Sony FX3",   "Dennis", 0.88,  45.0, "Handheld / roaming"),
-    Camera("CAM-05", "Blackmagic", "Jorge",  0.79,  95.0, "Wide / crane, farthest unit"),
-]
+# Setup and Camera now come from the call sheet. These module-level names are
+# populated in main() so the model functions below can stay simple.
+SETUPS = []
+CAMERAS = []
 
 # --------------------------------------------------------------------------
 # Engineered incidents - these are what make the demo compelling.
@@ -201,10 +168,11 @@ def derive(sig, temp, batt, rng):
 # Generation
 # --------------------------------------------------------------------------
 
-def generate(interval_s=30, seed=42, call_time="07:00"):
+def generate(interval_s=30, seed=42, call_time="07:00", shoot_date=None):
     rng = random.Random(seed)
-    day = datetime.now().replace(hour=int(call_time[:2]), minute=int(call_time[3:]),
-                                 second=0, microsecond=0)
+    base_date = shoot_date or datetime.now()
+    day = base_date.replace(hour=int(call_time[:2]), minute=int(call_time[3:]),
+                            second=0, microsecond=0)
     total_min = SETUPS[-1].end_min
     rows = []
 
@@ -261,14 +229,45 @@ ENGINEERED MOMENTS FOR THE DEMO
 
 
 def main():
+    global SETUPS, CAMERAS
+
+    here = os.path.dirname(os.path.abspath(__file__))
+
     ap = argparse.ArgumentParser()
+    ap.add_argument("--call-sheet", default=os.path.join(here, "call_sheet.txt"),
+                    help="path to the production's call sheet")
     ap.add_argument("--interval", type=int, default=30, help="sample interval, seconds")
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--call-time", default="07:00")
+    ap.add_argument("--call-time", default=None,
+                    help="override the call sheet's general call time")
+    ap.add_argument("--today", action="store_true",
+                    help="stamp the data with today's date instead of the call sheet's")
     ap.add_argument("--prefix", default="shoot_day")
     args = ap.parse_args()
 
-    rows = generate(args.interval, args.seed, args.call_time)
+    day = parse_call_sheet(args.call_sheet)
+    SETUPS = day.setups
+    CAMERAS = day.cameras
+
+    print(f"Read call sheet: {args.call_sheet}\n")
+    print(summarize(day))
+    print()
+
+    call_time = args.call_time or day.call_time
+
+    shoot_date = None
+    if not args.today:
+        # "Tuesday, 01 September 2026" -> a real date, so the generated day
+        # matches the sheet rather than whenever the script happened to run.
+        cleaned = day.shoot_date.split(",")[-1].strip()
+        for fmt in ("%d %B %Y", "%d %b %Y", "%B %d %Y", "%Y-%m-%d"):
+            try:
+                shoot_date = datetime.strptime(cleaned, fmt)
+                break
+            except ValueError:
+                continue
+
+    rows = generate(args.interval, args.seed, call_time, shoot_date)
 
     csv_path = f"{args.prefix}.csv"
     with open(csv_path, "w", newline="") as f:
